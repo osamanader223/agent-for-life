@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 1️⃣ استخراج النص من الفاتورة
     const rawText = await readInvoiceFile(file);
 
     if (!rawText || rawText.trim().length === 0) {
@@ -32,8 +33,10 @@ export async function POST(request: Request) {
       );
     }
 
+    // 2️⃣ إرسال النص للـ AI
     const invoiceData = await extractInvoiceData(rawText);
 
+    // 3️⃣ رفع الملف إلى Supabase Storage
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const filePath = `invoices/${Date.now()}-${file.name}`;
 
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 4️⃣ حفظ البيانات في database
     const { error: insertError } = await supabase.from("invoices").insert([
       {
         file_name: file.name,
@@ -75,6 +79,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 5️⃣ إرسال النتيجة للواجهة
     return NextResponse.json({
       success: true,
       invoiceData,
@@ -82,6 +87,7 @@ export async function POST(request: Request) {
       fileName: file.name,
       filePath,
     });
+
   } catch (error) {
     console.error("Upload route error:", error);
 
@@ -89,7 +95,9 @@ export async function POST(request: Request) {
       {
         success: false,
         error:
-          error instanceof Error ? error.message : "Unexpected server error",
+          error instanceof Error
+            ? error.message
+            : "Unexpected server error",
       },
       { status: 500 }
     );
