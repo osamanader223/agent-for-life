@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export type InvoiceData = {
@@ -19,7 +19,9 @@ function safeParseJSON(content: string): InvoiceData {
       invoice_date: parsed.invoice_date ?? "",
       total_amount: parsed.total_amount ?? "",
     };
-  } catch {
+  } catch (error) {
+    console.error("JSON parsing failed:", content);
+
     return {
       company_name: "",
       invoice_date: "",
@@ -28,7 +30,13 @@ function safeParseJSON(content: string): InvoiceData {
   }
 }
 
-export async function extractInvoiceData(text: string): Promise<InvoiceData> {
+export async function extractInvoiceData(
+  text: string
+): Promise<InvoiceData> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is missing from .env.local");
+  }
+
   const prompt = `
 You are an invoice extraction assistant.
 
@@ -41,8 +49,8 @@ Rules:
 - Return ONLY valid JSON
 - No markdown
 - If a field is missing, return empty string
-- invoice_date should be in YYYY-MM-DD if possible
-- total_amount should be numeric string if possible
+- invoice_date format: YYYY-MM-DD if possible
+- total_amount numeric string only
 
 Return exactly:
 {
@@ -57,7 +65,17 @@ ${text}
 
   const response = await openai.chat.completions.create({
     model: "gpt-4.1-mini",
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "system",
+        content:
+          "You extract structured data from invoices and return JSON only.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
     temperature: 0,
   });
 
