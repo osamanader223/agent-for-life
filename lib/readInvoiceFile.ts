@@ -1,42 +1,20 @@
-import { extractText, getDocumentProxy } from "unpdf";
-import { createWorker } from "tesseract.js";
+import vision from "@google-cloud/vision";
+import fs from "fs";
+import path from "path";
 
-function cleanText(text: string): string {
-  return text
-    .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+const client = new vision.ImageAnnotatorClient({
+  keyFilename: "google-key.json",
+});
 
-export async function readInvoiceFile(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
+export async function readInvoiceFile(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const tempPath = path.join(process.cwd(), "tmp", file.name);
 
-  // PDF
-  if (file.type === "application/pdf") {
-    const pdf = await getDocumentProxy(uint8Array);
-    const { text } = await extractText(pdf, {
-      mergePages: true,
-    });
+  fs.writeFileSync(tempPath, buffer);
 
-    return cleanText(text);
-  }
+  const [result] = await client.textDetection(tempPath);
 
-  // Images OCR
-  if (
-    file.type.startsWith("image/") &&
-    ["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)
-  ) {
-    const worker = await createWorker("eng");
+  fs.unlinkSync(tempPath);
 
-    try {
-      const result = await worker.recognize(uint8Array);
-      return cleanText(result.data.text);
-    } finally {
-      await worker.terminate();
-    }
-  }
-
-  throw new Error("Unsupported file type. Upload PDF or image.");
+  return result.fullTextAnnotation?.text || "";
 }
