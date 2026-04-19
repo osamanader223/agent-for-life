@@ -2,10 +2,23 @@
 
 import { useState } from "react";
 
+type InvoiceItem = {
+  name: string;
+  quantity: number;
+  price: number;
+  tax: number;
+};
+
 type InvoiceData = {
-  company_name: string;
+  invoice_number: string;
+  company: string;
   invoice_date: string;
-  total_amount: string;
+  due_date: string;
+  currency: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  items: InvoiceItem[];
 };
 
 export default function HomePage() {
@@ -52,7 +65,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#0b0f14] text-white p-6">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="w-full bg-[#121823] rounded-3xl shadow-2xl p-8 border border-[#1f2a3a]">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold">
@@ -84,7 +97,7 @@ export default function HomePage() {
             <button
               onClick={handleUpload}
               disabled={loading}
-              className="mt-5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-lg"
+              className="mt-5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-5 py-2 rounded-lg font-medium transition"
             >
               {loading ? "Processing..." : "Analyze Invoice"}
             </button>
@@ -93,31 +106,80 @@ export default function HomePage() {
           </div>
 
           {result && (
-            <div className="mt-8 border border-gray-700 rounded-xl p-6 bg-zinc-900">
-              <h2 className="text-xl font-semibold mb-4">
-                Extracted Invoice Data
-              </h2>
+            <div className="mt-8 space-y-6">
+              <div className="border border-gray-700 rounded-xl p-6 bg-zinc-900">
+                <h2 className="text-xl font-semibold mb-4">
+                  Extracted Invoice Data ✅
+                </h2>
 
-              <div className="space-y-2 text-sm">
-                <p>
-                  <strong>Company Name:</strong> {result.company_name}
-                </p>
-                <p>
-                  <strong>Invoice Date:</strong> {result.invoice_date}
-                </p>
-                <p>
-                  <strong>Total Amount:</strong> {result.total_amount}
-                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <p>
+                    <strong>Company:</strong> {result.company}
+                  </p>
+                  <p>
+                    <strong>Invoice Number:</strong> {result.invoice_number}
+                  </p>
+                  <p>
+                    <strong>Invoice Date:</strong> {result.invoice_date}
+                  </p>
+                  <p>
+                    <strong>Due Date:</strong> {result.due_date}
+                  </p>
+                  <p>
+                    <strong>Currency:</strong> {result.currency}
+                  </p>
+                  <p>
+                    <strong>Subtotal:</strong> {result.subtotal}
+                  </p>
+                  <p>
+                    <strong>Tax:</strong> {result.tax}
+                  </p>
+                  <p>
+                    <strong>Total:</strong> {result.total}
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
 
-          {rawText && (
-            <div className="mt-8 border border-gray-700 rounded-xl p-6 bg-zinc-900">
-              <h2 className="text-xl font-semibold mb-4">Raw Extracted Text</h2>
-              <pre className="whitespace-pre-wrap text-sm text-gray-300">
-                {rawText}
-              </pre>
+              <div className="border border-gray-700 rounded-xl p-6 bg-zinc-900">
+                <h2 className="text-xl font-semibold mb-4">Invoice Items 📦</h2>
+
+                {result.items && result.items.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-700 text-left">
+                          <th className="py-2">Item Name</th>
+                          <th className="py-2">Quantity</th>
+                          <th className="py-2">Price</th>
+                          <th className="py-2">Tax</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.items.map((item, index) => (
+                          <tr
+                            key={index}
+                            className="border-b border-gray-800 text-gray-300"
+                          >
+                            <td className="py-2">{item.name}</td>
+                            <td className="py-2">{item.quantity}</td>
+                            <td className="py-2">{item.price}</td>
+                            <td className="py-2">{item.tax}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-gray-400">No items found.</p>
+                )}
+              </div>
+
+              <div className="border border-gray-700 rounded-xl p-6 bg-zinc-900">
+                <h2 className="text-xl font-semibold mb-4">Raw Extracted Text</h2>
+                <pre className="whitespace-pre-wrap text-sm text-gray-300">
+                  {rawText}
+                </pre>
+              </div>
             </div>
           )}
         </div>

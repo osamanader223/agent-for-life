@@ -1,9 +1,28 @@
 import { NextResponse } from "next/server";
 import { readInvoiceFile } from "@/lib/readInvoiceFile";
-import { extractInvoiceData } from "@/lib/ai";
+import { parseInvoice } from "@/lib/ai";
 import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
+
+type InvoiceItem = {
+  name: string;
+  quantity: number;
+  price: number;
+  tax: number;
+};
+
+type InvoiceData = {
+  invoice_number: string;
+  company: string;
+  invoice_date: string;
+  due_date: string;
+  currency: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  items: InvoiceItem[];
+};
 
 export async function POST(request: Request) {
   try {
@@ -20,7 +39,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1️⃣ استخراج النص من الفاتورة
+    // 1️⃣ Extract text from invoice
     const rawText = await readInvoiceFile(file);
 
     if (!rawText || rawText.trim().length === 0) {
@@ -33,10 +52,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2️⃣ إرسال النص للـ AI
-    const invoiceData = await extractInvoiceData(rawText);
+    // 2️⃣ Send extracted text to AI
+    const parsedResult = await parseInvoice(rawText);
 
-    // 3️⃣ رفع الملف إلى Supabase Storage
+    let invoiceData: InvoiceData;
+
+    try {
+      invoiceData =
+        typeof parsedResult === "string"
+          ? JSON.parse(parsedResult)
+          : parsedResult;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "AI returned invalid JSON",
+          rawAiResponse: parsedResult,
+        },
+        { status: 500 }
+      );
+    }
+
+    // 3️⃣ Upload file to Supabase Storage
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const filePath = `invoices/${Date.now()}-${file.name}`;
 
@@ -57,14 +94,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4️⃣ حفظ البيانات في database
+    // 4️⃣ Save invoice data in database
     const { error: insertError } = await supabase.from("invoices").insert([
       {
         file_name: file.name,
         file_path: filePath,
-        company_name: invoiceData.company_name,
+        invoice_number: invoiceData.invoice_number,
+        company: invoiceData.company,
         invoice_date: invoiceData.invoice_date,
-        total_amount: invoiceData.total_amount,
+        due_date: invoiceData.due_date,
+        currency: invoiceData.currency,
+        subtotal: invoiceData.subtotal,
+        tax: invoiceData.tax,
+        total: invoiceData.total,
+        items: invoiceData.items,
         raw_text: rawText,
       },
     ]);
@@ -79,7 +122,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5️⃣ إرسال النتيجة للواجهة
+    // 5️⃣ Return result to frontend
     return NextResponse.json({
       success: true,
       invoiceData,
@@ -87,7 +130,6 @@ export async function POST(request: Request) {
       fileName: file.name,
       filePath,
     });
-
   } catch (error) {
     console.error("Upload route error:", error);
 
