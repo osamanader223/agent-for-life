@@ -1,20 +1,23 @@
-import vision from "@google-cloud/vision";
-import fs from "fs";
-import path from "path";
+import { PDFParse } from "pdf-parse";
 
-const client = new vision.ImageAnnotatorClient({
-  keyFilename: "google-key.json",
-});
+export async function readInvoiceFile(file: File): Promise<string> {
+  if (file.type !== "application/pdf") {
+    throw new Error("Only PDF files are supported now.");
+  }
 
-export async function readInvoiceFile(file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
-  const tempPath = path.join(process.cwd(), "tmp", file.name);
+  const parser = new PDFParse({ data: buffer });
 
-  fs.writeFileSync(tempPath, buffer);
+  try {
+    const result = await parser.getText();
+    const text = (result.text || "").trim();
 
-  const [result] = await client.textDetection(tempPath);
+    if (!text) {
+      throw new Error("No text found in PDF.");
+    }
 
-  fs.unlinkSync(tempPath);
-
-  return result.fullTextAnnotation?.text || "";
+    return text;
+  } finally {
+    await parser.destroy();
+  }
 }

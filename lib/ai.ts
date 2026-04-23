@@ -1,50 +1,34 @@
 import OpenAI from "openai";
+import { zodResponseFormat } from "openai/helpers/zod";
+import { InvoiceSchema, type InvoiceData } from "@/lib/schema";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function parseInvoice(text: string) {
-  const response = await openai.chat.completions.create({
+export async function parseInvoice(rawText: string): Promise<InvoiceData> {
+  const completion = await openai.chat.completions.parse({
     model: "gpt-4o-mini",
     temperature: 0,
     messages: [
       {
         role: "system",
-        content: `
-You are an expert accountant AI.
-
-Extract invoice data into STRICT JSON.
-
-Return ONLY JSON. No explanation.
-
-Schema:
-{
-  "invoice_number": string,
-  "company": string,
-  "invoice_date": "YYYY-MM-DD",
-  "due_date": "YYYY-MM-DD",
-  "currency": string,
-  "subtotal": number,
-  "tax": number,
-  "total": number,
-  "items": [
-    {
-      "name": string,
-      "quantity": number,
-      "price": number,
-      "tax": number
-    }
-  ]
-}
-        `,
+        content:
+          "You are an expert invoice extraction engine. Extract structured invoice data only. Normalize dates to YYYY-MM-DD. Convert amounts to numbers without currency symbols. Return valid structured data only.",
       },
       {
         role: "user",
-        content: text,
+        content: rawText,
       },
     ],
+    response_format: zodResponseFormat(InvoiceSchema, "invoice"),
   });
 
-  return response.choices[0].message.content;
+  const parsed = completion.choices[0].message.parsed;
+
+  if (!parsed) {
+    throw new Error("AI parsing failed.");
+  }
+
+  return parsed;
 }
