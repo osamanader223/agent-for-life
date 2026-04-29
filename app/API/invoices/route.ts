@@ -1,34 +1,44 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { readInvoiceFile } from "@/lib/readInvoiceFile";
+import { parseInvoice } from "@/lib/parseInvoice";
 
-export async function GET() {
+export const runtime = "nodejs";
+
+export async function POST(request: Request) {
   try {
-    const { data, error } = await supabase
-      .from("invoices")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const formData = await request.formData();
+    const file = formData.get("file");
 
-    if (error) {
+    if (!file || !(file instanceof File)) {
       return NextResponse.json(
         {
           success: false,
-          error: error.message,
-          invoices: [],
+          error: "No file uploaded",
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
 
+    const rawText = await readInvoiceFile(file);
+    const invoiceData = await parseInvoice(rawText);
+
     return NextResponse.json({
       success: true,
-      invoices: data,
+      message: "Invoice parsed successfully ✅",
+      fileName: file.name,
+      rawText,
+      invoiceData,
     });
   } catch (error) {
+    console.error("Invoice API error:", error);
+
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to fetch invoices",
-        invoices: [],
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unexpected server error",
       },
       { status: 500 }
     );
