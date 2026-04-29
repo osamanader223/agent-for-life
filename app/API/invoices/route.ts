@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readInvoiceFile } from "@/lib/readInvoiceFile";
-import { parseInvoice } from "@/lib/ai";
+import { parseInvoice } from "@/lib/parseInvoice";
 
 export const runtime = "nodejs";
 

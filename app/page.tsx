@@ -1,177 +1,252 @@
 "use client";
 
-import { useState } from "react";
-import { exportToExcel } from "@/lib/excel";
+import { useEffect, useState } from "react";
 
-type InvoiceItem = {
-  name: string;
-  quantity: number;
-  price: number;
-  tax: number;
+type ParsedInvoice = {
+  vendor: string | null;
+  invoiceDate: string | null;
+  total: number | null;
+  rawText: string;
 };
 
-type InvoiceData = {
-  invoice_number: string;
-  company: string;
-  invoice_date: string;
-  due_date: string;
-  currency: string;
-  subtotal: number;
-  tax: number;
-  total: number;
-  items: InvoiceItem[];
+type Suggestion = {
+  categoryId: number | null;
+  categoryName: string;
+  confidence: number;
+  source: "rule" | "ai" | "fallback";
+};
+
+type Category = {
+  id: number;
+  name: string;
+  type: string;
 };
 
 export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
-  const [data, setData] = useState<InvoiceData | null>(null);
   const [rawText, setRawText] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [parsed, setParsed] = useState<ParsedInvoice | null>(null);
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | "">("");
+  const [selectedCategoryName, setSelectedCategoryName] = useState("");
+  const [createRule, setCreateRule] = useState(true);
 
-  const upload = async () => {
-    if (!file) {
-      setError("Please choose a file first.");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    async function loadCategories() {
+      const res = await fetch("/api/categories");
+      const data = await res.json();
+
+      if (data.categories) {
+        setCategories(data.categories);
+      }
+    }
+
+    loadCategories();
+  }, []);
+
+  const handleAnalyze = async () => {
+    if (!rawText.trim()) {
+      setMessage("Please paste invoice text first.");
       return;
     }
 
-    setLoading(true);
-    setError("");
+    setAnalyzing(true);
     setMessage("");
-    setData(null);
-    setRawText("");
 
     try {
-      const form = new FormData();
-      form.append("file", file);
-
-      const res = await fetch("/api/invoices", {
+      const res = await fetch("/api/analyze-invoice", {
         method: "POST",
-        body: form,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rawText }),
       });
 
-      const text = await res.text();
-
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        throw new Error(`Server did not return JSON. Response was: ${text.slice(0, 200)}`);
-      }
+      const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(json.error || "Upload failed");
+        setMessage(data.error || "Analyze failed.");
+        return;
       }
 
-      setMessage(json.message || "Invoice processed successfully.");
-      setData(json.invoiceData || null);
-      setRawText(json.rawText || "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setParsed(data.parsed);
+      setSuggestion(data.suggestion);
+
+      setSelectedCategoryId(data.suggestion.categoryId || "");
+      setSelectedCategoryName(data.suggestion.categoryName || "");
+    } catch (error) {
+      console.error(error);
+      setMessage("Analyze request failed.");
     } finally {
-      setLoading(false);
+      setAnalyzing(false);
+    }
+  };
+
+  const handleCategoryChange = (value: string) => {
+    const id = Number(value);
+    const category = categories.find((c) => c.id === id);
+
+    setSelectedCategoryId(id);
+    setSelectedCategoryName(category?.name || "");
+  };
+
+  const handleSave = async () => {
+    if (!parsed) {
+      setMessage("Analyze invoice first.");
+      return;
+    }
+
+    if (!selectedCategoryId || !selectedCategoryName) {
+      setMessage("Please select a category.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/save-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          parsed,
+          selectedCategoryId,
+          selectedCategoryName,
+          confidence: suggestion?.confidence || 0,
+          source: suggestion?.source || "fallback",
+          createRule,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(data.error || "Save failed.");
+        return;
+      }
+
+      setMessage("Invoice saved successfully ✅");
+    } catch (error) {
+      console.error(error);
+      setMessage("Save request failed.");
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#0b0f14] text-white p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="bg-[#121823] border border-[#1f2a3a] rounded-3xl p-8 shadow-2xl">
-          <h1 className="text-3xl font-bold mb-2">Invoice AI 📄🤖</h1>
-          <p className="text-gray-400 mb-8">
-            Upload invoice → read text → parse data → export Excel
+    <main className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl p-8 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Invoice Review</h1>
+          <p className="text-gray-500 mt-1">
+            Upload/extract invoice text, suggest one category, review, then save.
           </p>
+        </div>
 
-          <div className="bg-[#0f1622] border border-dashed border-[#2a3b52] rounded-2xl p-6">
-            <input
-              type="file"
-              accept=".pdf,image/png,image/jpeg,image/jpg"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="block mb-4 text-sm text-gray-300"
-            />
+        <div>
+          <label className="block font-semibold mb-2">
+            Extracted Invoice Text
+          </label>
 
-            {file && (
-              <p className="text-sm text-gray-400 mb-4">
-                Selected file: {file.name}
-              </p>
-            )}
+          <textarea
+            value={rawText}
+            onChange={(e) => setRawText(e.target.value)}
+            placeholder="Paste extracted invoice text here..."
+            className="w-full h-40 border rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
 
-            <button
-              onClick={upload}
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-5 py-2 rounded-lg font-medium"
-            >
-              {loading ? "Processing..." : "Upload Invoice"}
-            </button>
+        <button
+          onClick={handleAnalyze}
+          disabled={analyzing}
+          className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:bg-blue-300"
+        >
+          {analyzing ? "Analyzing..." : "Suggest Category"}
+        </button>
 
-            {message && <p className="mt-4 text-green-400">{message}</p>}
-            {error && <p className="mt-4 text-red-400">{error}</p>}
-          </div>
+        {parsed && suggestion && (
+          <div className="border rounded-xl p-5 bg-gray-50 space-y-4">
+            <h2 className="text-xl font-bold">Review Result</h2>
 
-          {data && (
-            <div className="mt-8 bg-zinc-900 border border-gray-700 rounded-2xl p-6">
-              <h2 className="text-2xl font-semibold mb-4">
-                Extracted Invoice Data ✅
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <p><strong>Company:</strong> {data.company}</p>
-                <p><strong>Invoice Number:</strong> {data.invoice_number}</p>
-                <p><strong>Invoice Date:</strong> {data.invoice_date}</p>
-                <p><strong>Due Date:</strong> {data.due_date}</p>
-                <p><strong>Currency:</strong> {data.currency}</p>
-                <p><strong>Subtotal:</strong> {data.subtotal}</p>
-                <p><strong>Tax:</strong> {data.tax}</p>
-                <p><strong>Total:</strong> {data.total}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-gray-500">Vendor</p>
+                <p className="font-semibold">{parsed.vendor || "Unknown"}</p>
               </div>
 
-              {data.items?.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-3">Items 📦</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
-                      <thead>
-                        <tr className="border-b border-gray-700 text-left">
-                          <th className="py-2">Name</th>
-                          <th className="py-2">Qty</th>
-                          <th className="py-2">Price</th>
-                          <th className="py-2">Tax</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.items.map((item, index) => (
-                          <tr key={index} className="border-b border-gray-800">
-                            <td className="py-2">{item.name}</td>
-                            <td className="py-2">{item.quantity}</td>
-                            <td className="py-2">{item.price}</td>
-                            <td className="py-2">{item.tax}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+              <div>
+                <p className="text-gray-500">Date</p>
+                <p className="font-semibold">{parsed.invoiceDate || "Unknown"}</p>
+              </div>
 
-              <button
-                onClick={() => exportToExcel(data)}
-                className="mt-6 bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg font-medium"
+              <div>
+                <p className="text-gray-500">Total</p>
+                <p className="font-semibold">
+                  {parsed.total !== null ? `$${parsed.total}` : "Unknown"}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-gray-500 text-sm">AI Suggested Category</p>
+              <p className="text-lg font-bold">{suggestion.categoryName}</p>
+              <p className="text-sm text-gray-600">
+                Confidence: {(suggestion.confidence * 100).toFixed(0)}% · Source:{" "}
+                {suggestion.source}
+              </p>
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-2">
+                Accept or Change Category
+              </label>
+
+              <select
+                value={selectedCategoryId}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                className="w-full border rounded-xl p-3 bg-white"
               >
-                Download Excel
-              </button>
-            </div>
-          )}
+                <option value="">Select category</option>
 
-          {rawText && (
-            <div className="mt-8 bg-zinc-900 border border-gray-700 rounded-2xl p-6">
-              <h2 className="text-2xl font-semibold mb-4">Raw Extracted Text 📄</h2>
-              <pre className="whitespace-pre-wrap text-sm text-gray-300">
-                {rawText}
-              </pre>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
-        </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={createRule}
+                onChange={(e) => setCreateRule(e.target.checked)}
+              />
+              Remember this vendor/category as a rule
+            </label>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold disabled:bg-green-300"
+            >
+              {saving ? "Saving..." : "Save Invoice"}
+            </button>
+          </div>
+        )}
+
+        {message && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-xl">
+            {message}
+          </div>
+        )}
       </div>
     </main>
   );
