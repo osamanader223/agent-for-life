@@ -72,7 +72,9 @@ export default function Home() {
       setResult({
         category: data.category || "Other",
         confidence: data.confidence || 0.75,
-        reason: data.reason || "AI suggested this category based on invoice text.",
+        reason:
+          data.reason ||
+          "AI suggested this category based on invoice text.",
       });
 
       setMessage("Category suggested successfully.");
@@ -101,8 +103,14 @@ export default function Home() {
     setMessage("Reviewed category saved successfully.");
   }
 
+  function clearForm() {
+    setInvoiceText("");
+    setResult(null);
+    setMessage("Please paste invoice text first.");
+  }
+
   return (
-    <main className="min-h-screen bg-[#f8fafc] px-6 py-10 text-slate-900">
+ <main className="min-h-screen px-6 py-10 text-slate-900">
       <section className="mx-auto max-w-6xl">
         <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
@@ -121,6 +129,7 @@ export default function Home() {
           </div>
 
           <button
+            type="button"
             onClick={saveReview}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
           >
@@ -149,6 +158,7 @@ export default function Home() {
                 </div>
 
                 <h3 className="font-semibold text-slate-950">{step.title}</h3>
+
                 <p className="mt-1 text-sm text-slate-500">
                   {step.description}
                 </p>
@@ -163,16 +173,21 @@ export default function Home() {
               <h2 className="text-xl font-bold text-slate-950">
                 Extracted Invoice Text
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Paste the text extracted from OCR or invoice parser.
               </p>
             </div>
 
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label
+              htmlFor="invoice-text"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
               Invoice content
             </label>
 
             <textarea
+              id="invoice-text"
               value={invoiceText}
               onChange={(e) => setInvoiceText(e.target.value)}
               placeholder="Example: Jarir Bookstore invoice, printer paper, ink cartridge, total amount 240 SAR..."
@@ -181,6 +196,7 @@ export default function Home() {
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <button
+                type="button"
                 onClick={suggestCategory}
                 disabled={loading}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-teal-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -190,11 +206,8 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => {
-                  setInvoiceText("");
-                  setResult(null);
-                  setMessage("Please paste invoice text first.");
-                }}
+                type="button"
+                onClick={clearForm}
                 className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 Clear
@@ -212,6 +225,7 @@ export default function Home() {
               <h2 className="text-xl font-bold text-slate-950">
                 AI Suggestion
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Review the suggested category before saving.
               </p>
@@ -223,6 +237,7 @@ export default function Home() {
                   <p className="text-sm font-semibold text-teal-700">
                     Suggested Category
                   </p>
+
                   <h3 className="mt-2 text-3xl font-bold text-teal-950">
                     {result.category}
                   </h3>
@@ -233,6 +248,7 @@ export default function Home() {
                     <span className="font-semibold text-slate-700">
                       Confidence
                     </span>
+
                     <span className="font-bold text-slate-950">
                       {Math.round(result.confidence * 100)}%
                     </span>
@@ -250,12 +266,14 @@ export default function Home() {
                   <p className="mb-1 text-sm font-semibold text-slate-700">
                     Reason
                   </p>
+
                   <p className="text-sm leading-6 text-slate-600">
                     {result.reason}
                   </p>
                 </div>
 
                 <button
+                  type="button"
                   onClick={saveReview}
                   className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
                 >
@@ -268,9 +286,7 @@ export default function Home() {
                   <Brain size={26} />
                 </div>
 
-                <h3 className="font-bold text-slate-950">
-                  No category yet
-                </h3>
+                <h3 className="font-bold text-slate-950">No category yet</h3>
 
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   Paste invoice text and click Suggest Category to show the AI
