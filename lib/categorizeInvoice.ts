@@ -1,17 +1,10 @@
 import OpenAI from "openai";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import type { InvoiceData } from "@/lib/schema";
+import { ParsedInvoice, CategorySuggestion } from "@/types/invoice";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-type CategorySuggestion = {
-  categoryId: number | null;
-  categoryName: string;
-  confidence: number;
-  source: "rule" | "ai" | "fallback";
-};
 
 type Category = {
   id: number;
@@ -19,31 +12,31 @@ type Category = {
   type: string;
 };
 
-function normalize(text: string) {
-  return text.toLowerCase().trim();
+function normalize(value: string) {
+  return value.toLowerCase().trim();
 }
 
 export async function categorizeInvoice(
-  parsed: InvoiceData,
-  rawText: string
+  parsedInvoice: ParsedInvoice
 ): Promise<CategorySuggestion> {
-  const vendor = parsed.vendor || "";
+  const vendor = parsedInvoice.vendor || "";
+  const invoiceText = parsedInvoice.rawText;
 
-  const { data: categories, error: categoriesError } = await supabaseAdmin
+  const { data: categories, error: categoryError } = await supabaseAdmin
     .from("categories")
     .select("*")
     .order("name");
 
-  if (categoriesError || !categories || categories.length === 0) {
+  if (categoryError || !categories || categories.length === 0) {
     return {
       categoryId: null,
       categoryName: "Other",
-      confidence: 0.2,
+      confidence: 0.3,
       source: "fallback",
     };
   }
 
-  // 1. Rules first
+  // 1. Rule check first
   if (vendor) {
     const { data: rule } = await supabaseAdmin
       .from("rules")
@@ -65,35 +58,36 @@ export async function categorizeInvoice(
   const prompt = `
 You are a professional accountant for small businesses.
 
+Your task:
 Choose ONE best accounting category for this invoice.
 
 Return ONLY valid JSON:
 {
-  "category": "one category name from the list",
+  "category": "category name from list only",
   "confidence": number between 0 and 1
 }
 
 Available categories:
 ${categories.map((c: Category) => `- ${c.name}`).join("\n")}
 
-Invoice data:
-Vendor: ${parsed.vendor || "Unknown"}
-Invoice Date: ${parsed.invoiceDate || "Unknown"}
-Total: ${parsed.total ?? "Unknown"}
-Currency: ${parsed.currency || "Unknown"}
+Invoice vendor:
+${vendor || "Unknown"}
 
-Raw invoice text:
-${rawText}
+Invoice total:
+${parsedInvoice.total ?? "Unknown"}
+
+Invoice text:
+${invoiceText}
 `;
 
-  const response = await openai.chat.completions.create({
+  const aiResponse = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [{ role: "user", content: prompt }],
   });
 
-  const content = response.choices[0].message.content;
+  const content = aiResponse.choices[0].message.content;
 
   if (!content) {
     return {
@@ -104,13 +98,10 @@ ${rawText}
     };
   }
 
-  let aiResult: {
-    category?: string;
-    confidence?: number;
-  };
+  let parsedAI: { category?: string; confidence?: number };
 
   try {
-    aiResult = JSON.parse(content);
+    parsedAI = JSON.parse(content);
   } catch {
     return {
       categoryId: null,
@@ -121,8 +112,7 @@ ${rawText}
   }
 
   const matchedCategory = categories.find(
-    (category: Category) =>
-      normalize(category.name) === normalize(aiResult.category || "")
+    (c: Category) => normalize(c.name) === normalize(parsedAI.category || "")
   );
 
   if (!matchedCategory) {
@@ -137,7 +127,7 @@ ${rawText}
   return {
     categoryId: matchedCategory.id,
     categoryName: matchedCategory.name,
-    confidence: Number(aiResult.confidence ?? 0.6),
+    confidence: Number(parsedAI.confidence ?? 0.6),
     source: "ai",
   };
 }
