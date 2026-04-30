@@ -6,7 +6,7 @@ dotenv.config({
 });
 
 import { parseInvoice } from "./lib/parseInvoice";
-import { categorizeInvoice } from "./lib/categorize";
+import { categorizeInvoice } from "./lib/categorizeInvoice";
 
 console.log("API KEY:", process.env.OPENAI_API_KEY);
 

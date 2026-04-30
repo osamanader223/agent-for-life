@@ -1,4 +1,7 @@
+import { getData, CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
+
+PDFParse.setWorker(getData());
 
 export async function readInvoiceFile(file: File): Promise<string> {
   if (file.type !== "application/pdf") {
@@ -6,7 +9,11 @@ export async function readInvoiceFile(file: File): Promise<string> {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const parser = new PDFParse({ data: buffer });
+
+  const parser = new PDFParse({
+    data: buffer,
+    CanvasFactory,
+  });
 
   try {
     const result = await parser.getText();
