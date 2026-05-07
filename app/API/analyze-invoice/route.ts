@@ -1,5 +1,5 @@
 import { parseInvoice } from "@/lib/parseInvoice";
-import { categorizeInvoice } from "@/lib/categorizeInvoice";
+import { categorizeInvoice } from "@/lib/ai/categorize";
 
 export async function POST(req: Request) {
   try {

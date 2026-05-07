@@ -10,8 +10,4 @@ export type CategorySuggestion = {
   categoryName: string;
   confidence: number;
   source: "rule" | "ai" | "fallback";
-<<<<<<< HEAD
 };
-=======
-};
->>>>>>> main
