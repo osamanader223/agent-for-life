@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readInvoiceFile } from "@/lib/readInvoiceFile";
-import { parseInvoice } from "@/lib/ai";
+import { parseInvoice } from "@/lib/parseInvoice";
 import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -17,10 +17,8 @@ export async function POST(req: Request) {
     // OCR
     const rawText = await readInvoiceFile(file);
 
-    // AI
-    const aiResult = await parseInvoice(rawText);
-
-    const invoiceData = JSON.parse(aiResult!);
+    // Parse
+    const invoiceData = parseInvoice(rawText);
 
     // Upload file
     const buffer = Buffer.from(await file.arrayBuffer());
