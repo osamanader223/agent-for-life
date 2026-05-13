@@ -40,5 +40,8 @@ export function exportToExcel(data: InvoiceData) {
 
   XLSX.utils.book_append_sheet(workbook, worksheet, "Invoice");
 
-  XLSX.writeFile(workbook, `${data.company || "invoice"}-${data.invoice_number || "file"}.xlsx`);
+  XLSX.writeFile(
+    workbook,
+    `${data.company || "invoice"}-${data.invoice_number || "file"}.xlsx`
+  );
 }
