@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 export type ParsedInvoice = {
   vendor: string | null;
   invoiceDate: string | null;
@@ -16,7 +14,6 @@ function extractTotal(text: string): number | null {
 
   for (const regex of totalRegexes) {
     const match = text.match(regex);
-
     if (match?.[1]) {
       return Number(match[1]);
     }
@@ -34,7 +31,6 @@ function extractDate(text: string): string | null {
 
   for (const regex of dateRegexes) {
     const match = text.match(regex);
-
     if (match?.[0]) {
       return match[0];
     }
@@ -60,4 +56,3 @@ export function parseInvoice(rawText: string): ParsedInvoice {
     rawText,
   };
 }
->>>>>>> 71ee61182afb7dffdb16c78820cef620a34814dc
