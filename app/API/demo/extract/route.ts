@@ -1,8 +1,31 @@
 import { extractInvoice } from "@/lib/ai/demo-extract";
 import type { ExtractionResult } from "@/types/demo";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/* ── Rate limiting: 10 extractions per IP per hour (in-memory) ── */
+const rateLimitMap = new Map<string, { count: number; reset: number }>();
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 60 * 60 * 1000;
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now > entry.reset) {
+    rateLimitMap.set(ip, { count: 1, reset: now + RATE_WINDOW_MS });
+    return { allowed: true, remaining: RATE_LIMIT - 1 };
+  }
+
+  if (entry.count >= RATE_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  entry.count++;
+  return { allowed: true, remaining: RATE_LIMIT - entry.count };
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   food_cost: "مواد غذائية",
@@ -16,6 +39,23 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export async function POST(req: Request) {
   try {
+    const headersList = await headers();
+    const ip =
+      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      headersList.get("x-real-ip") ??
+      "unknown";
+
+    const { allowed, remaining } = checkRateLimit(ip);
+    if (!allowed) {
+      return Response.json(
+        { error: "تجاوزت الحد المسموح (10 استخراجات في الساعة). حاول مجدداً لاحقاً." },
+        {
+          status: 429,
+          headers: { "Retry-After": "3600", "X-RateLimit-Remaining": "0" },
+        }
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 

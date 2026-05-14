@@ -1,14 +1,22 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let _client: SupabaseClient | null = null;
 
-if (!supabaseUrl) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
+function getClient(): SupabaseClient {
+  if (_client) return _client;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Missing Supabase credentials: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required"
+    );
+  }
+  _client = createClient(url, key);
+  return _client;
 }
 
-if (!serviceRoleKey) {
-  throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
-}
-
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+// Proxy so existing `supabaseAdmin.from(...)` calls work unchanged,
+// but the client is only instantiated on first actual use (not at import time).
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get: (_target, prop) => (getClient() as unknown as Record<string, unknown>)[prop as string],
+});

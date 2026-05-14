@@ -2,9 +2,11 @@ import OpenAI from "openai";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { InvoiceData } from "@/lib/schema";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let _openai: OpenAI | null = null;
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
 
 type CategorySuggestion = {
   categoryId: number | null;
@@ -86,7 +88,7 @@ Raw invoice text:
 ${rawText}
 `;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0,
     response_format: { type: "json_object" },
