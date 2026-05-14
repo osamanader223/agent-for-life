@@ -58,6 +58,14 @@ export function UploadZone({ onComplete }: UploadZoneProps) {
           body: formData,
         });
 
+        // Guard: make sure we got JSON back, not an HTML error page
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) {
+          const preview = await res.text();
+          console.error("[upload] Non-JSON response:", res.status, preview.slice(0, 200));
+          throw new Error(`الخادم أرجع خطأ ${res.status}. حاول مرة أخرى.`);
+        }
+
         const data = await res.json();
 
         if (!res.ok) {
