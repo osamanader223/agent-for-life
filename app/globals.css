@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand — deep forest green */
+  --color-brand: #1a3d2b;
+  --color-brand-hover: #132e20;
+
+  /* Cream backgrounds */
+  --color-cream: #fdf8f0;
+  --color-cream-dark: #e8dfd0;
+
+  /* Gold accent */
+  --color-gold: #c49b2a;
+  --color-gold-light: #d4b050;
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-color: var(--color-cream);
+  color: #1a1a1a;
+}
