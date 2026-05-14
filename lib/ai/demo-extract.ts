@@ -21,13 +21,13 @@ export async function extractInvoice(
       ? `data:${mimeType};base64,${fileBase64}`
       : await convertPdfToImage(fileBase64);
 
-    // First pass — cheaper auto detail
-    let result = await callVision(imageDataUrl, 'auto', startTime);
+    // First pass — always high detail for receipt accuracy
+    let result = await callVision(imageDataUrl, 'high', startTime);
 
-    // Retry with high detail if confidence is very low
-    if (result.ok && result.confidence < 0.5) {
-      console.log(`[extract] low confidence (${result.confidence}), retrying with detail:high`);
-      result = await callVision(imageDataUrl, 'high', startTime);
+    // Retry once if confidence is low
+    if (result.ok && result.confidence < 0.6) {
+      console.log(`[extract] low confidence (${result.confidence}), retrying`);
+      result = await callVision(imageDataUrl, 'high', startTime, true);
     }
 
     return result;
@@ -40,19 +40,24 @@ export async function extractInvoice(
 async function callVision(
   imageDataUrl: string,
   detail: 'auto' | 'low' | 'high',
-  startTime: number
+  startTime: number,
+  isRetry = false
 ): Promise<ExtractionResult> {
+  const userText = isRetry
+    ? 'Re-examine this invoice carefully. Some fields may be small or partially obscured. Return the same JSON schema — do not skip any field.'
+    : 'Extract this invoice data.';
+
   const response = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     response_format: { type: 'json_object' },
     temperature: 0,
-    max_tokens: 1000,
+    max_tokens: 2500,
     messages: [
       { role: 'system', content: INVOICE_EXTRACTION_PROMPT },
       {
         role: 'user',
         content: [
-          { type: 'text', text: 'Extract this invoice data.' },
+          { type: 'text', text: userText },
           { type: 'image_url', image_url: { url: imageDataUrl, detail } },
         ],
       },
