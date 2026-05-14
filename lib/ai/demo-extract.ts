@@ -89,33 +89,48 @@ async function callVision(
   };
 }
 
-async function convertPdfToImage(pdfBase64: string): Promise<string> {
-  const { createCanvas } = await import('@napi-rs/canvas');
-  // Use legacy build which works in Node.js without a DOM
+async function loadPdfDoc(pdfBase64: string) {
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-  // Disable worker thread in server environment
   (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '';
-
   const pdfData = Buffer.from(pdfBase64, 'base64');
-  const loadingTask = (pdfjsLib as any).getDocument({
+  return (pdfjsLib as any).getDocument({
     data: new Uint8Array(pdfData),
     useSystemFonts: true,
     isEvalSupported: false,
     disableFontFace: true,
-  });
+  }).promise;
+}
 
-  const pdfDoc = await loadingTask.promise;
-  const page = await pdfDoc.getPage(1);
-
-  // Scale 2× for higher fidelity text recognition
+async function renderPageToDataUrl(pdfDoc: any, pageNum: number): Promise<string> {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const page = await pdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: 2.0 });
   const canvas = createCanvas(Math.round(viewport.width), Math.round(viewport.height));
   const ctx = canvas.getContext('2d');
-
   await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, viewport }).promise;
-  await pdfDoc.destroy();
+  page.cleanup();
+  return `data:image/png;base64,${canvas.toBuffer('image/png').toString('base64')}`;
+}
 
-  const pngBuffer = canvas.toBuffer('image/png');
-  return `data:image/png;base64,${pngBuffer.toString('base64')}`;
+async function convertPdfToImage(pdfBase64: string): Promise<string> {
+  const pdfDoc = await loadPdfDoc(pdfBase64);
+  const dataUrl = await renderPageToDataUrl(pdfDoc, 1);
+  await pdfDoc.destroy();
+  return dataUrl;
+}
+
+/** Returns the number of pages in a PDF */
+export async function getPdfPageCount(pdfBase64: string): Promise<number> {
+  const pdfDoc = await loadPdfDoc(pdfBase64);
+  const count: number = pdfDoc.numPages;
+  await pdfDoc.destroy();
+  return count;
+}
+
+/** Extracts a single page from a PDF as a base64 PNG data URL */
+export async function extractPdfPage(pdfBase64: string, pageNum: number): Promise<string> {
+  const pdfDoc = await loadPdfDoc(pdfBase64);
+  const dataUrl = await renderPageToDataUrl(pdfDoc, pageNum);
+  await pdfDoc.destroy();
+  return dataUrl;
 }
