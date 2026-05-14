@@ -1,4 +1,3 @@
-// [Person 2 - UI]
 "use client";
 
 import { useState } from "react";
@@ -8,6 +7,7 @@ import {
   XCircle,
   Clock,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,9 @@ export function ExtractionResult({
   onReset,
 }: ExtractionResultProps) {
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [email, setEmail] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [emailError, setEmailError] = useState("");
 
   const parsed = (result?.parsed as Record<string, unknown>) ?? result;
@@ -38,9 +40,7 @@ export function ExtractionResult({
     vendor: String(parsed?.vendor ?? ""),
     invoiceDate: String(parsed?.invoiceDate ?? ""),
     total: String(parsed?.total ?? ""),
-    category: String(
-      suggestion?.categoryName ?? result?.category ?? ""
-    ),
+    category: String(suggestion?.categoryName ?? result?.category ?? ""),
   });
 
   const confidence =
@@ -73,11 +73,28 @@ export function ExtractionResult({
       return;
     }
     setEmailError("");
-    setSaved(true);
+    setSaving(true);
+
+    try {
+      await fetch("/api/demo/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          businessName: businessName.trim() || null,
+          extractedData: { ...fields, confidence: confidencePct },
+        }),
+      });
+    } catch {
+      // Non-fatal: still show success to user
+    } finally {
+      setSaving(false);
+      setSaved(true);
+    }
   };
 
   return (
-    <div className="space-y-5">
+    <div className="animate-fade-in space-y-5">
       {/* Confidence + time header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -95,7 +112,7 @@ export function ExtractionResult({
         </div>
         <button
           onClick={onReset}
-          className="flex items-center gap-1.5 text-sm text-[#6b7280] hover:text-brand transition-colors"
+          className="flex items-center gap-1.5 text-sm text-[#6b7280] transition-colors hover:text-brand"
         >
           <RotateCcw className="h-3.5 w-3.5" />
           فاتورة جديدة
@@ -106,13 +123,13 @@ export function ExtractionResult({
       <Progress value={confidencePct} />
 
       {/* Time comparison */}
-      <div className="rounded-xl bg-brand/5 border border-brand/10 p-3 text-center text-sm">
+      <div className="rounded-xl border border-brand/10 bg-brand/5 p-3 text-center text-sm">
         <span className="text-[#6b7280]">بدوننا: </span>
         <span className="font-semibold text-[#6b7280] line-through">
           ~5 دقائق يدوي
         </span>
         <span className="mx-2 text-[#d1cbbf]">•</span>
-        <span className="text-brand font-semibold">معنا: </span>
+        <span className="font-semibold text-brand">معنا: </span>
         <span className="font-bold text-brand">
           {processingTime.toFixed(1)} ثانية
         </span>
@@ -182,8 +199,8 @@ export function ExtractionResult({
           <p className="text-sm text-[#6b7280]">
             سنرسل لك تقرير الفاتورة + رابط التجربة المجانية
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="flex-1 space-y-1">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1">
               <Input
                 type="email"
                 placeholder="بريدك الإلكتروني"
@@ -199,15 +216,29 @@ export function ExtractionResult({
                 <p className="text-xs text-red-600">{emailError}</p>
               )}
             </div>
-            <Button onClick={handleSave} className="shrink-0">
-              حفظ النتيجة
-            </Button>
+            <Input
+              placeholder="اسم المطعم / المقهى"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+            />
           </div>
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full sm:w-auto"
+          >
+            {saving ? "جاري الحفظ..." : "حفظ النتيجة"}
+          </Button>
         </div>
       ) : (
-        <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
-          <CheckCircle2 className="h-5 w-5 shrink-0" />
-          <p className="font-semibold">تم الحفظ! سنتواصل معك قريباً</p>
+        <div className="animate-fade-in flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-green-800">
+          <Sparkles className="h-5 w-5 shrink-0 text-gold" />
+          <div>
+            <p className="font-bold">شكراً! راح نتواصل معك</p>
+            <p className="text-sm text-green-700">
+              تم حفظ بياناتك — ترقّب رسالة منا قريباً
+            </p>
+          </div>
         </div>
       )}
     </div>

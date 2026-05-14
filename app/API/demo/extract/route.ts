@@ -1,9 +1,18 @@
-// [Person 2 - UI]
-import { parseInvoice } from "@/lib/parseInvoice";
-import { categorizeInvoice } from "@/lib/ai/categorize";
+import { extractInvoice } from "@/lib/ai/demo-extract";
+import type { ExtractionResult } from "@/types/demo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const CATEGORY_LABELS: Record<string, string> = {
+  food_cost: "مواد غذائية",
+  utilities: "مرافق",
+  supplies: "مستلزمات",
+  maintenance: "صيانة",
+  salaries: "رواتب",
+  rent: "إيجار",
+  misc: "متنوع",
+};
 
 export async function POST(req: Request) {
   try {
@@ -22,17 +31,39 @@ export async function POST(req: Request) {
       );
     }
 
-    let rawText = "";
+    const isImage = file.type.startsWith("image/");
+    const isPdf = file.type === "application/pdf";
 
-    if (file.type === "application/pdf") {
-      const { PDFParse } = await import("pdf-parse");
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      await parser.destroy();
-      rawText = result.text?.trim() ?? "";
+    if (!isImage && !isPdf) {
+      return Response.json(
+        { error: "نوع الملف غير مدعوم. الرجاء رفع صورة أو PDF" },
+        { status: 400 }
+      );
+    }
 
-      if (rawText.length < 10) {
+    // Dev fallback when no API key
+    if (!process.env.OPENAI_API_KEY) {
+      await new Promise((r) => setTimeout(r, 2500));
+      return Response.json({
+        parsed: {
+          vendor: "شركة المطاعم السعودية",
+          invoiceDate: new Date().toISOString().split("T")[0],
+          total: "1380",
+          invoiceNumber: `INV-${Math.floor(Math.random() * 10000)}`,
+          vat: "180",
+          subtotal: "1200",
+          currency: "SAR",
+        },
+        suggestion: { categoryName: "مواد غذائية", confidence: 0.92 },
+      });
+    }
+
+    if (isPdf) {
+      const { extractText } = await import("unpdf");
+      const pdfData = new Uint8Array(await file.arrayBuffer());
+      const { text: rawText } = await extractText(pdfData, { mergePages: true });
+
+      if (!rawText || rawText.trim().length < 10) {
         return Response.json(
           {
             error:
@@ -41,38 +72,83 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-    } else if (file.type.startsWith("image/")) {
-      // For demo: return mock extraction since full OCR requires cloud setup
-      const mockText = `
-        فاتورة ضريبية
-        المورد: شركة المطاعم السعودية
-        التاريخ: ${new Date().toISOString().split("T")[0]}
-        رقم الفاتورة: INV-${Math.floor(Math.random() * 10000)}
-        المواد الغذائية: مكونات المطبخ
-        الإجمالي قبل الضريبة: 1200 ريال
-        ضريبة القيمة المضافة 15%: 180 ريال
-        الإجمالي: 1380 ريال
-      `;
-      rawText = mockText;
-    } else {
-      return Response.json(
-        { error: "نوع الملف غير مدعوم. الرجاء رفع صورة أو PDF" },
-        { status: 400 }
-      );
+
+      const OpenAILib = (await import("openai")).default;
+      const openai = new OpenAILib({ apiKey: process.env.OPENAI_API_KEY });
+
+      const aiResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: `Extract invoice data from this text and return JSON with these exact fields: vendor_name (string), vendor_name_ar (string or null), invoice_number (string or null), invoice_date (YYYY-MM-DD string or null), subtotal (number or null), vat_amount (number or null), total (number or null), currency (default "SAR"), category (one of: food_cost, utilities, supplies, maintenance, salaries, rent, misc), confidence (float 0-1).\n\nInvoice text:\n${rawText.slice(0, 3000)}`,
+          },
+        ],
+      });
+
+      const content = aiResp.choices[0].message.content;
+      if (!content) throw new Error("Empty AI response");
+
+      const f = JSON.parse(content);
+      return Response.json({
+        parsed: {
+          vendor: f.vendor_name_ar ?? f.vendor_name ?? "",
+          invoiceDate: f.invoice_date ?? "",
+          total: f.total?.toString() ?? "",
+          invoiceNumber: f.invoice_number ?? "",
+          vat: f.vat_amount?.toString() ?? "",
+          subtotal: f.subtotal?.toString() ?? "",
+          currency: f.currency ?? "SAR",
+        },
+        suggestion: {
+          categoryName: f.category
+            ? (CATEGORY_LABELS[f.category] ?? f.category)
+            : "",
+          confidence:
+            typeof f.confidence === "number" ? f.confidence : 0.8,
+        },
+      });
     }
 
-    const parsed = parseInvoice(rawText);
-    const suggestion = await categorizeInvoice(parsed);
+    // Image: GPT-4o vision
+    const buffer = await file.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+    const result = await extractInvoice(base64, file.type);
 
-    return Response.json({ parsed, suggestion });
+    if (result.ok === false) {
+      const { error } = result as Extract<ExtractionResult, { ok: false }>;
+      return Response.json({ error }, { status: 422 });
+    }
+
+    const okResult = result as Extract<ExtractionResult, { ok: true }>;
+    const { fields, confidence } = okResult;
+    return Response.json({
+      parsed: {
+        vendor: fields.vendor_name_ar ?? fields.vendor_name ?? "",
+        invoiceDate: fields.invoice_date ?? "",
+        total: fields.total?.toString() ?? "",
+        invoiceNumber: fields.invoice_number ?? "",
+        vat: fields.vat_amount?.toString() ?? "",
+        subtotal: fields.subtotal?.toString() ?? "",
+        vatNumber: fields.vendor_vat_number ?? "",
+        paymentMethod: fields.payment_method ?? "",
+        currency: fields.currency ?? "SAR",
+      },
+      suggestion: {
+        categoryName: fields.category
+          ? (CATEGORY_LABELS[fields.category] ?? fields.category)
+          : "",
+        confidence,
+      },
+    });
   } catch (error) {
     console.error("Demo extract error:", error);
     return Response.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "فشل في معالجة الفاتورة",
+          error instanceof Error ? error.message : "فشل في معالجة الفاتورة",
       },
       { status: 500 }
     );
