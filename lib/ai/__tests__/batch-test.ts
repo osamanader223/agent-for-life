@@ -33,12 +33,14 @@ interface Row {
 async function processImage(label: string, base64: string, mime: string): Promise<Row> {
   process.stdout.write(`  ${label.padEnd(35)} ... `);
   const result = await extractInvoice(base64, mime);
-  const tag = result.ok ? `✓ ${(result.confidence * 100).toFixed(0)}%` : `✗ ${result.error}`;
-  console.log(tag);
 
-  if (!result.ok) {
+  if (result.ok === false) {
+    console.log(`✗ ${result.error}`);
     return { label, ok: false, confidence: null, needsReview: null, vendor: null, date: null, total: null, vatOk: null, ms: result.processingTimeMs, error: result.error };
   }
+
+  const tag = `✓ ${(result.confidence * 100).toFixed(0)}%`;
+  console.log(tag);
 
   const f = result.fields;
   let vatOk: boolean | null = null;

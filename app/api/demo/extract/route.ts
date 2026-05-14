@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { extractInvoice } from "@/lib/ai/demo-extract";
+import type { ExtractionResult } from "@/types/demo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -148,15 +149,17 @@ export async function POST(request: Request) {
     /* ── Image: GPT-4o vision path ── */
     const buffer = await file.arrayBuffer();
     const base64 = Buffer.from(buffer).toString("base64");
-    const result = await extractInvoice(base64, file.type);
+    const result: ExtractionResult = await extractInvoice(base64, file.type);
 
-    if (!result.ok) {
+    // Explicit discriminant check — TypeScript narrows to ExtractionFailure here
+    if (result.ok === false) {
       return NextResponse.json(
         { ok: false, error: result.error },
         { status: 422 }
       );
     }
 
+    // TypeScript knows result is ExtractionSuccess here
     const { fields, confidence } = result;
     return NextResponse.json({
       parsed: {
