@@ -1,6 +1,7 @@
 // [Person 1 - AI]
 // Usage: npx tsx lib/ai/__tests__/extract-manual-test.ts <path-to-invoice>
-import 'dotenv/config';
+import { config } from 'dotenv';
+config({ path: '.env.local' });
 import fs from 'fs';
 import path from 'path';
 import { extractInvoice } from '../demo-extract';
